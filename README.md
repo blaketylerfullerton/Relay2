@@ -34,6 +34,81 @@ Why this is different.
         - Is bandwhich saturated
 
 
+---
+
+### Install
+
+Install the `relay` binary on any machine. No Go or source checkout required —
+this downloads a prebuilt binary for the machine's OS/arch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/blaketylerfullerton/Relay2/main/scripts/install.sh | sh
+```
+
+It lands in `~/.local/bin/relay` (override with `RELAY_BIN_DIR`). Make sure that
+directory is on your `PATH`. Supported targets: macOS (arm64/amd64) and Linux
+(amd64/arm64).
+
+Then:
+
+```bash
+relay join      # inspect this machine and join the cluster
+relay nodes     # list machines
+relay version   # print the installed version
+```
+
+### Updating
+
+To bring a machine to the latest code:
+
+```bash
+relay update
+```
+
+`relay update` picks its mode automatically:
+
+- **Release mode (default):** downloads the newest prebuilt binary for this
+  OS/arch and swaps it in place. No Go needed. This is what your fleet uses.
+- **Source mode:** on a machine that has a Relay git checkout (`$RELAY_SRC`) and
+  Go installed, it runs `git pull` + `go build` instead. This is for dev boxes.
+
+Pass `--force` to reinstall even when already up to date.
+
+### Distribution (how updates ship)
+
+Updates flow through GitHub Releases — you never hand-copy binaries.
+
+```
+dev machine                GitHub                       fleet
+-----------                ------                       -----
+git push  ──────────▶  Actions cross-compiles  ──────▶  relay update
+                       darwin/linux × arm64/amd64       (downloads latest)
+                       publishes "latest" release
+```
+
+1. **Push to `main`.** The `release` workflow
+   (`.github/workflows/release.yml`) cross-compiles `relay` for every supported
+   OS/arch and publishes them to a rolling **`latest`** GitHub Release. No tags,
+   no manual builds.
+2. **On each machine, run `relay update`.** It pulls the freshly built binary
+   from that release.
+
+The version stamped into release binaries is `main-<short-sha>`, so
+`relay version` and `relay update`'s "already up to date" check reflect the
+exact commit a machine is running.
+
+**Developing on a machine?** Build straight from your checkout instead of
+downloading:
+
+```bash
+export RELAY_SRC="$HOME/path/to/Relay2"   # your clone
+relay update                              # git pull + go build, in place
+```
+
+Or install from source explicitly: `RELAY_FROM_SOURCE=1 ./scripts/install.sh`.
+
+---
+
 Phase 0: Building the scheduler not the inference. We are NOt trying to invednt a new distrubuteed transformer architecture. We are building a runtime that orchestrates the existing inference servers.
 
 ```
