@@ -1,18 +1,22 @@
 name: release
 
-# Push a tag like v0.1.0 to cut a release:
-#   git tag v0.1.0 && git push origin v0.1.0
-# This cross-compiles relay for every supported OS/arch and publishes the
-# binaries to a GitHub Release. Machines then `relay update` (or run the
-# install script) to download the right one — no Go required on them.
+# Every push to main cross-compiles relay for all supported OS/arch and
+# publishes them to a rolling "latest" GitHub Release. Machines pull the right
+# binary via the install script or `relay update` — no Go required on them, and
+# no tagging ceremony: just `git push` and the fleet can update.
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  workflow_dispatch: {}
 
 permissions:
   contents: write
+
+# Never let two builds race on the moving "latest" tag.
+concurrency:
+  group: release-latest
+  cancel-in-progress: true
 
 jobs:
   release:
@@ -27,7 +31,8 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="main-$(git rev-parse --short HEAD)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
             os="${target%/*}"; arch="${target#*/}"
             echo "building relay_${os}_${arch} ($VERSION)"
@@ -37,7 +42,13 @@ jobs:
           done
           ( cd dist && shasum -a 256 relay_* > checksums.txt )
 
-      - name: Publish release
+      - name: Publish rolling "latest" release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes
+        run: |
+          # Replace the moving tag + release so /releases/latest points here.
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest dist/* \
+            --title "$VERSION" \
+            --notes "Rolling build of main ($VERSION)." \
+            --latest

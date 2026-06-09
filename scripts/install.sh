@@ -2,7 +2,8 @@
 # install.sh — install Relay on a machine.
 #
 # Default: downloads the prebuilt `relay` binary for this OS/arch from the
-# latest GitHub Release. No Go, no source checkout, no build.
+# rolling "latest" GitHub Release (rebuilt on every push to main). No Go, no
+# source checkout, no build.
 #
 #   curl -fsSL https://raw.githubusercontent.com/blaketylerfullerton/Relay2/main/scripts/install.sh | sh
 #
