@@ -42,6 +42,7 @@ Commands:
   run <model>       Schedule a model onto the best node (--explain to see why)
   status            One-glance cluster health and capacity
   watch             Live dashboard of the whole fabric
+  update            Pull latest source, rebuild, and replace this binary
 
 Run 'relay <command> --help' for details.`
 
@@ -66,6 +67,8 @@ func (a *App) Run(args []string) int {
 		return a.cmdRun(rest)
 	case "watch":
 		return a.cmdWatch(rest)
+	case "update":
+		return a.cmdUpdate(rest)
 	case "help", "-h", "--help":
 		fmt.Fprintln(a.Out, usage)
 		return 0
