@@ -9,6 +9,7 @@
 package agent
 
 import (
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -104,15 +105,55 @@ func nvidiaGPU() (hardware, bool) {
 	if len(parts) < 4 {
 		return hardware{}, false
 	}
-	totalMiB, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
-	freeMiB, _ := strconv.Atoi(strings.TrimSpace(parts[2]))
+	totalMiB, totalErr := strconv.Atoi(strings.TrimSpace(parts[1]))
+	freeMiB, freeErr := strconv.Atoi(strings.TrimSpace(parts[2]))
 	utilPct, _ := strconv.Atoi(strings.TrimSpace(parts[3]))
-	return hardware{
+
+	hw := hardware{
 		name:      strings.TrimSpace(parts[0]),
 		vramTotal: totalMiB / 1024,
 		vramFree:  freeMiB / 1024,
 		util:      float64(utilPct) / 100,
-	}, true
+	}
+
+	// Unified-memory NVIDIA parts (GB10/DGX Spark, Jetson) have no discrete
+	// VRAM, so nvidia-smi reports "[N/A]" for memory.total/free. That parses to
+	// 0 and would make the scheduler believe the node can't run anything. Treat
+	// these like Apple Silicon: fall back to system RAM as the memory pool.
+	if totalErr != nil || freeErr != nil || hw.vramTotal == 0 {
+		if total, free, ok := linuxSystemMemory(); ok {
+			hw.vramTotal = total
+			hw.vramFree = free
+		}
+	}
+	return hw, true
+}
+
+// linuxSystemMemory reads total and available RAM (in GB) from /proc/meminfo.
+// On unified-memory accelerators this is the memory the GPU actually draws from.
+func linuxSystemMemory() (total, free int, ok bool) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, 0, false
+	}
+	var totalKB, availKB int
+	for _, ln := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(ln)
+		if len(fields) < 2 {
+			continue
+		}
+		v, _ := strconv.Atoi(fields[1]) // kB
+		switch fields[0] {
+		case "MemTotal:":
+			totalKB = v
+		case "MemAvailable:":
+			availKB = v
+		}
+	}
+	if totalKB == 0 {
+		return 0, 0, false
+	}
+	return totalKB / (1024 * 1024), availKB / (1024 * 1024), true
 }
 
 func appleSilicon() (string, int) {
