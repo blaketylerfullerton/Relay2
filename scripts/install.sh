@@ -1,33 +1,71 @@
 #!/usr/bin/env sh
-# install.sh — bootstrap Relay on a new machine.
+# install.sh — install Relay on a machine.
 #
-# Clones the source to ~/.relay/src, builds, and installs the `relay` binary.
-# After this, keep the machine current with:  relay update
+# Default: downloads the prebuilt `relay` binary for this OS/arch from the
+# latest GitHub Release. No Go, no source checkout, no build.
 #
-# Usage:
 #   curl -fsSL https://raw.githubusercontent.com/blaketylerfullerton/Relay2/main/scripts/install.sh | sh
-#   ./scripts/install.sh            # from a local checkout
+#
+# After installing, keep the machine current with:  relay update
+#
+# Set RELAY_FROM_SOURCE=1 to clone + build instead (needs git and Go) — useful
+# on a machine you also develop on.
 set -eu
 
-REPO="${RELAY_REPO:-https://github.com/blaketylerfullerton/Relay2.git}"
-SRC="${RELAY_SRC:-$HOME/.relay/src}"
+REPO="${RELAY_REPO:-blaketylerfullerton/Relay2}"
 BIN_DIR="${RELAY_BIN_DIR:-$HOME/.local/bin}"
 
-command -v git >/dev/null 2>&1 || { echo "install: git is required" >&2; exit 1; }
-command -v go  >/dev/null 2>&1 || { echo "install: Go is required (https://go.dev/dl)" >&2; exit 1; }
+# Map uname to the GOOS/GOARCH names used in release asset filenames.
+os="$(uname -s)"
+case "$os" in
+  Darwin) os="darwin" ;;
+  Linux)  os="linux" ;;
+  *) echo "install: unsupported OS '$os'" >&2; exit 1 ;;
+esac
+arch="$(uname -m)"
+case "$arch" in
+  arm64|aarch64) arch="arm64" ;;
+  x86_64|amd64)  arch="amd64" ;;
+  *) echo "install: unsupported arch '$arch'" >&2; exit 1 ;;
+esac
 
-if [ -d "$SRC/.git" ]; then
-  echo "Updating source in $SRC ..."
-  git -C "$SRC" pull --ff-only
-else
-  echo "Cloning $REPO -> $SRC ..."
-  mkdir -p "$(dirname "$SRC")"
-  git clone "$REPO" "$SRC"
-fi
-
-echo "Building ..."
 mkdir -p "$BIN_DIR"
-( cd "$SRC" && go build -o "$BIN_DIR/relay" . )
+
+install_from_source() {
+  SRC="${RELAY_SRC:-$HOME/.relay/src}"
+  command -v git >/dev/null 2>&1 || { echo "install: git is required" >&2; exit 1; }
+  command -v go  >/dev/null 2>&1 || { echo "install: Go is required (https://go.dev/dl)" >&2; exit 1; }
+  if [ -d "$SRC/.git" ]; then
+    echo "Updating source in $SRC ..."
+    git -C "$SRC" pull --ff-only
+  else
+    echo "Cloning https://github.com/$REPO -> $SRC ..."
+    mkdir -p "$(dirname "$SRC")"
+    git clone "https://github.com/$REPO" "$SRC"
+  fi
+  echo "Building ..."
+  ( cd "$SRC" && go build -o "$BIN_DIR/relay" . )
+}
+
+install_from_release() {
+  asset="relay_${os}_${arch}"
+  url="https://github.com/$REPO/releases/latest/download/$asset"
+  echo "Downloading $asset from latest release ..."
+  if command -v curl >/dev/null 2>&1; then
+    curl -fSL "$url" -o "$BIN_DIR/relay"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$BIN_DIR/relay" "$url"
+  else
+    echo "install: need curl or wget" >&2; exit 1
+  fi
+  chmod +x "$BIN_DIR/relay"
+}
+
+if [ "${RELAY_FROM_SOURCE:-0}" = "1" ]; then
+  install_from_source
+else
+  install_from_release
+fi
 
 echo "Installed relay -> $BIN_DIR/relay"
 case ":$PATH:" in

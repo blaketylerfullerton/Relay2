@@ -1,0 +1,43 @@
+name: release
+
+# Push a tag like v0.1.0 to cut a release:
+#   git tag v0.1.0 && git push origin v0.1.0
+# This cross-compiles relay for every supported OS/arch and publishes the
+# binaries to a GitHub Release. Machines then `relay update` (or run the
+# install script) to download the right one — no Go required on them.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME}"
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            echo "building relay_${os}_${arch} ($VERSION)"
+            GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+              go build -ldflags "-s -w -X relay/internal/cli.Version=${VERSION}" \
+              -o "dist/relay_${os}_${arch}" .
+          done
+          ( cd dist && shasum -a 256 relay_* > checksums.txt )
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes
