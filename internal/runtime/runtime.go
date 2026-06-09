@@ -51,6 +51,17 @@ func All() []Runtime {
 	}
 }
 
+// ByName returns the shipped adapter whose Name matches, or nil if none does.
+// Used by the CLI to turn a scheduler's runtime choice back into an adapter.
+func ByName(name string) Runtime {
+	for _, r := range All() {
+		if r.Name() == name {
+			return r
+		}
+	}
+	return nil
+}
+
 // Detected returns only the adapters that report Detect() == true on this host.
 func Detected() []Runtime {
 	var out []Runtime

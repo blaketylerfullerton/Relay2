@@ -19,7 +19,7 @@ func Placement(d scheduler.Decision) string {
 	b.WriteString(bold + "Scheduler:" + reset + "\n")
 	b.WriteString(fmt.Sprintf("%s✓%s Selected node: %s\n", green, reset, d.Selected.Name))
 	b.WriteString(fmt.Sprintf("%s✓%s Runtime: %s\n", green, reset, d.Runtime))
-	b.WriteString("\nConnecting...\n\n> ")
+	b.WriteString("\nConnecting...\n\n")
 	return b.String()
 }
 

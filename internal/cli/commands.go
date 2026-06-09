@@ -8,6 +8,7 @@ import (
 
 	"relay/internal/agent"
 	"relay/internal/render"
+	rt "relay/internal/runtime"
 	"relay/internal/scheduler"
 	"relay/internal/types"
 )
@@ -114,6 +115,29 @@ func (a *App) cmdRun(args []string) int {
 	}
 	fmt.Fprint(a.Out, render.Placement(decision))
 	if decision.Selected == nil {
+		return 1
+	}
+
+	// Remote execution isn't wired up yet: Relay can only hand the terminal to
+	// a runtime on the machine it's running on. When the scheduler picks
+	// another node, report that rather than silently doing nothing.
+	local := agent.LocalNode().Name
+	if decision.Selected.Name != local {
+		fmt.Fprintf(a.Err, "relay: selected node %q is remote; remote exec is not implemented yet.\n", decision.Selected.Name)
+		fmt.Fprintf(a.Err, "       run this on %s, or use 'relay run %s --explain' to see placement.\n", decision.Selected.Name, model)
+		return 1
+	}
+
+	adapter := rt.ByName(decision.Runtime)
+	if adapter == nil {
+		fmt.Fprintf(a.Err, "relay: no adapter for runtime %q\n", decision.Runtime)
+		return 1
+	}
+
+	// Hand the terminal to the runtime. This blocks until the user exits the
+	// interactive session, then returns control to the shell.
+	if err := adapter.Run(types.Job{Model: want.Name, Runtime: decision.Runtime, Node: decision.Selected.Name}); err != nil {
+		fmt.Fprintf(a.Err, "relay: session ended: %v\n", err)
 		return 1
 	}
 	return 0

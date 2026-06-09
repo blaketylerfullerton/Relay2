@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"os"
 	"os/exec"
 
 	"relay/internal/types"
@@ -66,8 +67,16 @@ func (o *Ollama) Running() ([]types.Job, error) {
 	return out, nil
 }
 
+// Run hands the terminal to `ollama run <model>` as an interactive session.
+// Ollama auto-pulls the model if it isn't cached, then drops into its own REPL;
+// control returns to Relay only when the user exits (Ctrl-D / /bye). Stdio is
+// wired to the real TTY so the prompt and streaming output work normally.
 func (o *Ollama) Run(job types.Job) error {
-	return describe("ollama run %s", job.Model)
+	cmd := exec.Command("ollama", "run", job.Model)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func (o *Ollama) Pull(model types.Model) error {
