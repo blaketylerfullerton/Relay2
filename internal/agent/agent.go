@@ -172,6 +172,13 @@ func appleSilicon() (string, int) {
 }
 
 func hostName() string {
+	// RELAY_NODE_NAME lets an operator override the reported node name. Besides
+	// being handy for naming, it makes the multi-node path demoable on a single
+	// machine: two `relay join` processes with different names register as two
+	// distinct nodes against the same controller.
+	if name := strings.TrimSpace(os.Getenv("RELAY_NODE_NAME")); name != "" {
+		return name
+	}
 	if out, err := exec.Command("hostname", "-s").Output(); err == nil {
 		if s := strings.TrimSpace(string(out)); s != "" {
 			return s

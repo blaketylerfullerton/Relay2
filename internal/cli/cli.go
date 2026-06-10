@@ -19,13 +19,23 @@ type App struct {
 	Err   io.Writer
 }
 
-// New builds an App backed by the real local store and stdio. Set RELAY_DEMO=1
-// to use the canned multi-node mock cluster instead (useful for screenshots
-// and trying the UI without live runtimes).
+// New builds an App and chooses the cluster backend from the environment:
+//
+//	RELAY_DEMO=1          → canned multi-node mock (screenshots, UI without runtimes)
+//	RELAY_CONTROLLER=addr → live cluster read from the controller at addr
+//	(neither)             → this machine only, via local runtime discovery
+//
+// The Store interface is the seam: every command, the scheduler, and the
+// renderer are identical across all three.
 func New() *App {
-	var s store.Store = store.NewLocal()
-	if os.Getenv("RELAY_DEMO") == "1" {
+	var s store.Store
+	switch {
+	case os.Getenv("RELAY_DEMO") == "1":
 		s = store.NewMock()
+	case os.Getenv("RELAY_CONTROLLER") != "":
+		s = store.NewController(os.Getenv("RELAY_CONTROLLER"))
+	default:
+		s = store.NewLocal()
 	}
 	return &App{Store: s, Out: os.Stdout, Err: os.Stderr}
 }
@@ -36,7 +46,8 @@ Usage:
   relay <command> [args]
 
 Commands:
-  join              Install the agent and join this machine to the cluster
+  controller        Run the cluster controller agents register with
+  join              Join this machine to the cluster (--controller addr)
   nodes             List machines in the cluster
   models            List models available to run
   run <model>       Schedule a model onto the best node (--explain to see why)
@@ -44,6 +55,8 @@ Commands:
   watch             Live dashboard of the whole fabric
   update            Update this binary (rebuild from source, or download a release)
   version           Print the installed version
+
+Point the read commands at a controller with RELAY_CONTROLLER=host:port.
 
 Run 'relay <command> --help' for details.`
 
@@ -56,6 +69,8 @@ func (a *App) Run(args []string) int {
 
 	cmd, rest := args[0], args[1:]
 	switch cmd {
+	case "controller":
+		return a.cmdController(rest)
 	case "join":
 		return a.cmdJoin(rest)
 	case "nodes":

@@ -1,22 +1,54 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"relay/internal/agent"
+	"relay/internal/controller"
 	"relay/internal/render"
 	rt "relay/internal/runtime"
 	"relay/internal/scheduler"
 	"relay/internal/types"
 )
 
-// cmdJoin inspects the local machine via the agent and reports what it would
-// register with the controller. Phase 0 stops short of real registration
-// (that's gRPC to the controller, a later phase), but the discovery is real.
-func (a *App) cmdJoin(_ []string) int {
+// cmdController runs the cluster controller: the HTTP registry agents join and
+// heartbeat to, and the source `relay nodes/status/watch` read when pointed at
+// it via RELAY_CONTROLLER. It blocks until interrupted.
+func (a *App) cmdController(args []string) int {
+	addr := flagValue(args, "--listen", ":7777")
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	hint := addr
+	if strings.HasPrefix(addr, ":") {
+		hint = "<this-host>" + addr // bare ":7777" → tell agents to fill the host
+	}
+	fmt.Fprintf(a.Out, "Relay controller listening on %s (Ctrl-C to stop).\n", addr)
+	fmt.Fprintf(a.Out, "Agents: relay join --controller %s\n", hint)
+	fmt.Fprintf(a.Out, "Read:   RELAY_CONTROLLER=%s relay nodes\n", hint)
+
+	if err := controller.Serve(ctx, addr); err != nil {
+		fmt.Fprintf(a.Err, "relay: controller: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(a.Out, "\nController stopped.")
+	return 0
+}
+
+// cmdJoin discovers this machine and joins it to the cluster. With a controller
+// configured (--controller addr, or RELAY_CONTROLLER), it registers and then
+// heartbeats in the foreground until interrupted — the agent daemon. Without
+// one, it just prints what it discovered, so `relay join` is still useful for
+// inspecting a host before any controller exists.
+func (a *App) cmdJoin(args []string) int {
+	addr := flagValue(args, "--controller", os.Getenv("RELAY_CONTROLLER"))
+
 	fmt.Fprintln(a.Out, "Joining Relay cluster...")
 	fmt.Fprintln(a.Out, "  inspecting host...")
 	time.Sleep(120 * time.Millisecond)
@@ -29,8 +61,33 @@ func (a *App) cmdJoin(_ []string) int {
 		fmt.Fprintln(a.Out, "then re-run 'relay join'.")
 		return 0
 	}
-	fmt.Fprintln(a.Out, "\nThis machine is ready to join. Try: relay nodes")
+
+	if addr == "" {
+		fmt.Fprintln(a.Out, "\nThis machine is ready to join. Point it at a controller:")
+		fmt.Fprintln(a.Out, "  relay join --controller <host:port>   (or set RELAY_CONTROLLER)")
+		return 0
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	fmt.Fprintln(a.Out)
+	if err := agent.Serve(ctx, addr, a.Out); err != nil {
+		fmt.Fprintf(a.Err, "relay: %v\n", err)
+		return 1
+	}
 	return 0
+}
+
+// flagValue returns the argument following name, or def if name is absent. Tiny
+// helper for the handful of flags here — not worth a flag package.
+func flagValue(args []string, name, def string) string {
+	for i, arg := range args {
+		if arg == name && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return def
 }
 
 // cmdNodes prints the compact inventory table.
