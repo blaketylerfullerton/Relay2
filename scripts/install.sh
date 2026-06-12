@@ -45,7 +45,12 @@ install_from_source() {
     git clone "https://github.com/$REPO" "$SRC"
   fi
   echo "Building ..."
-  ( cd "$SRC" && go build -o "$BIN_DIR/relay" . )
+  # Stamp the same version as the release workflow: major.minor from VERSION +
+  # the number of commits since that file last changed (resets on minor bumps).
+  base="$(git -C "$SRC" log -1 --format=%H -- VERSION)"
+  patch="$(git -C "$SRC" rev-list --count "${base}..HEAD")"
+  ver="$(cat "$SRC/VERSION").${patch}"
+  ( cd "$SRC" && go build -ldflags "-X relay/internal/cli.Version=$ver" -o "$BIN_DIR/relay" . )
 }
 
 install_from_release() {

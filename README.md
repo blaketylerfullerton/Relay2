@@ -52,10 +52,65 @@ directory is on your `PATH`. Supported targets: macOS (arm64/amd64) and Linux
 Then:
 
 ```bash
-relay join      # inspect this machine and join the cluster
+relay join      # inspect this machine (add --controller <addr> to join a cluster)
 relay nodes     # list machines
 relay version   # print the installed version
 ```
+
+To wire multiple machines together, see **Running a cluster** below.
+
+### Running a cluster
+
+A Relay cluster is one **controller** (the registry every machine reports to)
+and any number of **agents** (the machines that actually run models). The
+controller can live on one of the agent machines — it's lightweight.
+
+**1. Start the controller** on one machine:
+
+```bash
+relay controller            # listens on :7777
+# or pin a port: relay controller --listen :9000
+```
+
+On startup it prints copy-pasteable commands with this machine's LAN IP:
+
+```
+Relay controller listening on :7777 (Ctrl-C to stop).
+Agents: relay join --controller 192.168.0.76:7777
+Read:   RELAY_CONTROLLER=192.168.0.76:7777 relay nodes
+```
+
+**2. Join each machine** (run this on every box that should run models —
+including the controller box itself):
+
+```bash
+relay join --controller 192.168.0.76:7777
+```
+
+`join` registers the host's real GPU/VRAM and detected models, then heartbeats
+in the foreground until you Ctrl-C. To keep it running after logout, launch it
+under `tmux`, `nohup`, or a `launchd`/`systemd` unit.
+
+**3. Read the cluster** from anywhere that can reach the controller. Point the
+read commands at it with `RELAY_CONTROLLER`:
+
+```bash
+export RELAY_CONTROLLER=192.168.0.76:7777
+relay nodes                  # every joined machine
+relay status                 # aggregate health + VRAM
+relay watch                  # live dashboard; nodes drop ~12s after a box dies
+relay run <model> --explain  # scheduler ranks across all nodes
+```
+
+Notes:
+
+- **Same network only.** The printed IP is reachable from the controller's LAN.
+  On a different subnet/VPN, use whatever address that machine can actually
+  reach the controller on.
+- **No auth or TLS yet** — this is plaintext HTTP for a trusted network. Don't
+  expose the controller port to the internet.
+- **Try it on one machine:** give a second `join` a distinct name to simulate a
+  second node — `RELAY_NODE_NAME=mac-studio relay join --controller 127.0.0.1:7777`.
 
 ### Updating
 

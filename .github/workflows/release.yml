@@ -23,6 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # Full history so the commit count for the patch number is accurate
+        # (the default shallow clone would always report 1).
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -33,7 +37,12 @@ jobs:
       - name: Build binaries
         run: |
           mkdir -p dist
-          VERSION="main-$(git rev-parse --short HEAD)"
+          # Version = the major.minor in ./VERSION + the number of commits since
+          # that file last changed, as the patch. Bumping 0.1 -> 0.2 in VERSION
+          # resets the patch to 0, so the number never balloons. No tags.
+          base="$(git log -1 --format=%H -- VERSION)"
+          patch="$(git rev-list --count "${base}..HEAD")"
+          VERSION="$(cat VERSION).${patch}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
             os="${target%/*}"; arch="${target#*/}"

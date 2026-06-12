@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -25,9 +26,16 @@ func (a *App) cmdController(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
+	// When listening on all interfaces (a bare ":port"), fill the host in the
+	// hints with this machine's LAN IP so the printed commands are copy-paste
+	// ready. Fall back to a placeholder if we can't determine it.
 	hint := addr
 	if strings.HasPrefix(addr, ":") {
-		hint = "<this-host>" + addr // bare ":7777" → tell agents to fill the host
+		if ip := lanIP(); ip != "" {
+			hint = ip + addr
+		} else {
+			hint = "<this-host>" + addr
+		}
 	}
 	fmt.Fprintf(a.Out, "Relay controller listening on %s (Ctrl-C to stop).\n", addr)
 	fmt.Fprintf(a.Out, "Agents: relay join --controller %s\n", hint)
@@ -77,6 +85,22 @@ func (a *App) cmdJoin(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// lanIP reports this machine's primary outbound IPv4, for printing a
+// copy-pasteable controller address. It opens a UDP socket toward a public
+// address — no packets are actually sent — and reads back the local endpoint
+// the OS would route through. Returns "" if it can't be determined.
+func lanIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	if addr, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+		return addr.IP.String()
+	}
+	return ""
 }
 
 // flagValue returns the argument following name, or def if name is absent. Tiny
